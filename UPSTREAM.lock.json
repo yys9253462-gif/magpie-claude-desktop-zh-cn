@@ -1,0 +1,9 @@
+{
+  "project": "javaht/claude-desktop-zh-cn",
+  "version": "1.4.23",
+  "commit": "6b611ab50e90ba546a90af2dffa00f5c2ae5a19b",
+  "source": "https://github.com/javaht/claude-desktop-zh-cn",
+  "license": "MIT",
+  "files": ["scripts/", "resources/"],
+  "note": "固定上游源码，保留 MIT 许可与上游说明；插件运行时不会自动下载或替换这些文件。"
+}

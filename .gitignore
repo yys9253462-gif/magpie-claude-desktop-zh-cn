@@ -1,0 +1,6 @@
+node_modules/
+*.tgz
+*.log
+coverage/
+.sandbox/
+upstream-tests/

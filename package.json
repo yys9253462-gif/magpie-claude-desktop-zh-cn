@@ -1,0 +1,60 @@
+{
+  "name": "magpie-claude-desktop-zh-cn",
+  "version": "0.1.2",
+  "description": "在 Magpie 中管理 Windows Claude Desktop 第三方 API 模式的中文界面。",
+  "type": "module",
+  "main": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "serve.mjs",
+    "lib/",
+    "page/",
+    "scripts/",
+    "resources/",
+    "README.md",
+    "LICENSE",
+    "NOTICE.md",
+    "UPSTREAM.lock.json",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:upstream": "python -I -m unittest discover -s upstream-tests -v",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "magpie-page",
+    "claude-desktop",
+    "chinese",
+    "localization"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20",
+    "magpie": ">=0.1.3216"
+  },
+  "magpie": {
+    "page": {
+      "title": "Claude Desktop 中文",
+      "titles": {
+        "zh": "Claude Desktop 中文",
+        "zh-TW": "Claude Desktop 中文",
+        "ja": "Claude Desktop 中国語",
+        "de": "Claude Desktop Chinesisch"
+      },
+      "file": "page/index.html",
+      "icon": "page/icon.svg",
+      "service": {
+        "port": 3485,
+        "option": "port"
+      }
+    },
+    "options": {
+      "port": 3485,
+      "language": "zh-CN"
+    }
+  }
+}

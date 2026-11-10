@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="claude-zh-token" content="__CLAUDE_ZH_TOKEN__">
+<meta name="claude-zh-base" content="__CLAUDE_ZH_BASE__">
+<title>Claude Desktop 中文 · Magpie</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="heading">
+    <div class="brand">中</div>
+    <div><p class="eyebrow">MAGPIE · 本机工具</p><h1>Claude Desktop 中文</h1><p class="subtitle">为第三方 API 模式添加简体中文或繁体中文界面。</p></div>
+  </header>
+
+  <section class="notice" id="scope">
+    <strong>修改的是这台电脑上的 Claude Desktop</strong>
+    <p>补丁不配置 API、不读取密钥。安装会关闭并重新打开 Claude；当前未对 Claude 4.23118 系列完成实机兼容验证。</p>
+  </section>
+
+  <section class="card">
+    <div class="section-title"><h2>安装环境</h2><span class="tag" id="support">检测中</span></div>
+    <dl class="details">
+      <div><dt>运行平台</dt><dd id="platform">—</dd></div>
+      <div><dt>Claude 版本</dt><dd id="version">—</dd></div>
+      <div><dt>安装方式</dt><dd id="kind">—</dd></div>
+      <div><dt>汉化源码</dt><dd>javaht/claude-desktop-zh-cn · 1.4.23</dd></div>
+    </dl>
+    <p class="muted" id="detect-message">正在读取本机信息…</p>
+  </section>
+
+  <section class="card">
+    <div class="section-title"><h2>选择界面语言</h2><span class="tag">MIT · 可分享</span></div>
+    <label class="language"><input type="radio" name="language" value="zh-CN" checked><span><strong>简体中文</strong><small>zh-CN</small></span></label>
+    <label class="language"><input type="radio" name="language" value="zh-TW"><span><strong>繁體中文（台灣）</strong><small>zh-TW</small></span></label>
+    <label class="language"><input type="radio" name="language" value="zh-HK"><span><strong>繁體中文（香港）</strong><small>zh-HK</small></span></label>
+    <div class="actions"><button class="primary" id="install" type="button">安装中文补丁</button><button id="uninstall" type="button">恢复官方文件</button><button class="quiet" id="refresh" type="button">刷新状态</button></div>
+    <p class="muted">安装后若未自动切换，请在 Claude 左下角 Language 中选择中文。</p>
+    <div class="confirm-box" id="confirm-box" hidden role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+      <strong id="confirm-title">请确认本机操作</strong>
+      <p id="confirm-text"></p>
+      <div class="actions"><button class="primary" id="confirm-action" type="button">确认执行</button><button id="cancel-action" type="button">取消</button></div>
+    </div>
+  </section>
+
+  <details class="card advanced" id="advanced">
+    <summary>Microsoft Store 版的写入权限</summary>
+    <p>Claude 安装在受保护的 WindowsApps 目录。仅当普通安装因权限失败时才使用以下选项；会请求 Windows UAC 管理员授权。</p>
+    <label class="check"><input id="elevated" type="checkbox">使用管理员权限执行安装器</label>
+    <label class="check"><input id="take-ownership" type="checkbox" disabled>允许在仍无法写入时接管 WindowsApps 目录所有权</label>
+    <p class="muted">接管后所有者会从 TrustedInstaller 改为 Administrators，卸载补丁不会自动还原；通常需要重装或升级 Claude 才能恢复。默认不执行。</p>
+  </details>
+
+  <section class="card task" id="task-card" hidden>
+    <div class="section-title"><h2 id="task-title">任务状态</h2><span class="tag" id="task-tag">执行中</span></div>
+    <p id="task-message"></p>
+    <p id="permission-help" class="notice" hidden>Store 版目录需要写入权限。请在上方选择“使用管理员权限执行安装器”，然后重新点击安装。</p>
+    <pre id="log">等待安装器输出…</pre>
+    <p class="muted" id="task-foot">此页每两秒刷新。管理员任务请在另一个 PowerShell 窗口查看实时进度。</p>
+  </section>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+</main>
+<footer>基于 <a href="https://github.com/javaht/claude-desktop-zh-cn">javaht/claude-desktop-zh-cn</a> 的 MIT 源码改编。非 Anthropic 官方项目。</footer>
+</body>
+</html>
