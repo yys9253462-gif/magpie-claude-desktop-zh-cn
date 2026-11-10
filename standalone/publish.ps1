@@ -1,6 +1,7 @@
 param([string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'make-icon.ps1')
 $out = Join-Path $root 'artifacts\standalone'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
