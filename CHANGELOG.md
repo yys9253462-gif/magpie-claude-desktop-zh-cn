@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — 2026-11-10
+
+- 新增独立 Windows 单文件 EXE，不需要 Magpie、Node.js、Python 或安装 .NET。
+- 启动后自动安装简体中文，显示日志并提供恢复官方文件入口。
+- 内嵌上游脚本与全部中文资源，使用自包含 .NET 8 WinForms 程序。
+- 已在 Claude 4.23118.1.0 / Microsoft Store 上完成真实自动安装、重启和 Cowork 服务恢复。
+
 ## 0.1.2 — 2026-11-10
 
 - 首个公开发布版本，提供 GitHub 源码与可解压安装的 Magpie 插件包。

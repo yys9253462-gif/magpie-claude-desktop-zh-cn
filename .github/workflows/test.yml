@@ -12,3 +12,5 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm pack --dry-run
+      - run: dotnet build standalone/ClaudeZhStandalone.csproj -c Release -p:EnableDefaultItems=true
+

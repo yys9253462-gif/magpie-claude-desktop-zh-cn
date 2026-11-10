@@ -1,8 +1,32 @@
-# Magpie · Claude Desktop 中文
+# Claude Desktop 中文 · Windows 独立版 / Magpie 插件
 
-把 [javaht/claude-desktop-zh-cn](https://github.com/javaht/claude-desktop-zh-cn) 的 Windows 中文补丁包装成可分享的 Magpie 页面插件。为**第三方 API / Gateway 模式**添加简体中文、繁體中文（台灣）与繁體中文（香港）。
+把 [javaht/claude-desktop-zh-cn](https://github.com/javaht/claude-desktop-zh-cn) 的 Windows 中文补丁包装成**双击即用的 Windows 程序**和可分享的 Magpie 页面插件。为**第三方 API / Gateway 模式**添加简体中文、繁體中文（台灣）与繁體中文（香港）。
 
-> 本插件不是 API 代理，不配置模型，也不读取或上传 API 密钥。它修改运行 Magpie 的 Windows 电脑上的 Claude Desktop 本地资源。
+> 不是 API 代理，不配置模型，也不读取或上传 API 密钥。它修改本机 Claude Desktop 的本地资源。
+
+## 最简单：Windows 双击自动汉化
+
+从 [Releases](https://github.com/yys9253462-gif/magpie-claude-desktop-zh-cn/releases) 下载 `ClaudeDesktop-ZH-CN.exe`，双击即可。
+
+- **不需要 Magpie、Node.js、Python 或安装 .NET**；EXE 已内嵌运行时与全部语言资源。
+- 启动后自动检测 Claude、备份、安装简体中文并重新打开 Claude。
+- 显示安装进度与详细日志；完成前请勿重复启动。
+- 界面提供“恢复官方文件”，使用安装前的备份恢复。
+- Windows Store 版若需要管理员权限，会显示 UAC；不会默认接管 WindowsApps 所有权，需单独勾选确认。
+
+要求：64 位 Windows 10/11 与 Claude Desktop。EXE 约 160 MB，首次启动需释放内嵌语言包，安装过程通常需要几分钟，请等待状态变为完成。
+
+也可以在本目录运行独立 EXE。开发构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\standalone\publish.ps1
+```
+
+产物：`artifacts/standalone/ClaudeDesktop-ZH-CN.exe`。`--self-test` 验证内嵌资源与恢复调用链，不用于跳过安装流程。
+
+## Magpie 插件版
+
+把上游补丁包装成 Magpie 页面插件，提供三种语言选择、本机检测、安装和恢复。
 
 ## 功能
 
@@ -67,6 +91,8 @@ node serve.mjs
 - 上游 26 项 Python 测试及 9 个可独立执行的 PowerShell 测试脚本已在 Windows 通过；需要真实客户端归档的 `Test-AsarRoundTrip.ps1` 未执行。
 - 已在隔离 HOME 的 Magpie 0.1.3216 + 干净 Chromium 中联调通过：插件页面握手、服务代理、控制台和 Claude `4.23118.1.0 / Microsoft Store` 检测正常，无脚本或网络错误。
 - **尚未点击安装，尚未完成 Claude 中文界面的实机兼容验收。** 上游存在同系列的未解决反馈：[issue #237](https://github.com/javaht/claude-desktop-zh-cn/issues/237)。安装成功不等于中文界面已验证。
+- **独立 EXE 已在 Windows + Claude `4.23118.1.0 / Microsoft Store` 上完成真实自动汉化**：日志确认安装完成、Claude 重启和 Cowork 服务恢复。尚未逐项目视验收全部界面。
+- 上游存在同系列的未解决反馈：[issue #237](https://github.com/javaht/claude-desktop-zh-cn/issues/237)。安装成功不等于中文界面已验证。
 - 每次 Claude 升级后可能需要恢复并重新安装新版补丁；先检查本插件的 `UPSTREAM.lock.json`。
 
 ## 开发
@@ -94,6 +120,6 @@ npm pack --dry-run
 
 MIT；上游版权、修改范围和第三方边界见 [NOTICE.md](NOTICE.md)。可自由使用、修改和分享，需保留许可声明。
 
-**已发布 GitHub 源码，未自动发布 npm。** Releases 提供 `.tgz` 插件包；解压后安装含 `package.json` 的目录。不要将 `.sandbox/`、运行日志、用户配置或 Claude 原始闭源安装包发布出去。
+**已发布 GitHub 源码，未自动发布 npm。** Releases 提供独立 Windows `.exe` 与 `.tgz` Magpie 插件包；插件包解压后安装含 `package.json` 的目录。不要将 `.sandbox/`、运行日志、用户配置或 Claude 原始闭源安装包发布出去。
 
 本项目不是 Anthropic 官方产品，也不提供对任何 Claude 新版本的兼容保证。出现问题时先使用“恢复官方文件”，并附上插件版本、Claude 版本、安装方式和脱敏后的错误日志。

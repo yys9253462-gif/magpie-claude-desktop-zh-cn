@@ -4,3 +4,7 @@ node_modules/
 coverage/
 .sandbox/
 upstream-tests/
+artifacts/
+standalone/bin/
+standalone/obj/
+standalone/payload.zip
