@@ -4,12 +4,13 @@
 
 > 不是 API 代理，不配置模型，也不读取或上传 API 密钥。它修改本机 Claude Desktop 的本地资源。
 
-## 最简单：Windows 双击自动汉化
+## 最简单：Windows 双击选择语言后汉化
 
 从 [Releases](https://github.com/yys9253462-gif/magpie-claude-desktop-zh-cn/releases) 下载 `ClaudeDesktop-ZH-CN.exe`，双击即可。
 
 - **不需要 Magpie、Node.js、Python 或安装 .NET**；EXE 已内嵌运行时与全部语言资源。
-- 启动后自动检测 Claude、备份、安装简体中文并重新打开 Claude。
+- **启动后先选择语言，再点击“开始汉化”**，不会打开就修改 Claude。
+- 自动检测 Claude、备份、安装所选语言并重新打开 Claude。
 - 显示安装进度与详细日志；完成前请勿重复启动。
 - 界面提供“恢复官方文件”，使用安装前的备份恢复。
 - Windows Store 版若需要管理员权限，会显示 UAC；不会默认接管 WindowsApps 所有权，需单独勾选确认。

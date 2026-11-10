@@ -8,7 +8,7 @@
     <AssemblyName>ClaudeDesktop-ZH-CN</AssemblyName>
     <RootNamespace>ClaudeZhStandalone</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Description>Claude Desktop Windows 一键中文补丁</Description>
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
