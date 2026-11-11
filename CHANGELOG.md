@@ -1,5 +1,12 @@
 # Changelog
 
+## macOS 0.1.0 — 2026-11-11
+
+- 新增包含 `.app` 和 `.command` 入口的 macOS ZIP，先选语言、确认后才执行。
+- 内嵌固定上游 macOS 补丁、三种中文资源与 MIT 许可，提供备份恢复、日志和任务互斥。
+- 需要用户预装 Python 3.10+；未做 Apple Developer ID 签名或公证。
+- 已检查包内资源、ZIP 校验与 Unix 可执行权限；尚未在真实 Mac 上验收安装与恢复。
+
 ## 0.3.2 — 2026-11-11
 
 - 修复「无法获得 Claude 程序目录的写权限」这个误导性报错：真实原因是 `Claude.exe` 仍被进程占用（`ERROR_SHARING_VIOLATION`），不是权限不足。诊断显示目录 ACL 已正确修改，只有文件打开失败。
