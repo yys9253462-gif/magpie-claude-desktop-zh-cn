@@ -544,11 +544,17 @@ function Get-ClaudeConfigPaths {
     return @($configPaths | Select-Object -Unique)
 }
 
-function Test-WriteAccess {
+function Get-WriteAccessFailure {
+    # 返回写入失败的原因："missing" / "locked" / "denied" / $null（可写）。
+    #
+    # 区分 locked 和 denied 很关键：ERROR_SHARING_VIOLATION（32）说明文件被
+    # 进程占着，ACL 其实是好的；ERROR_ACCESS_DENIED（5）才是权限不足。
+    # 之前一律返回 false，上层把「文件被占用」报成「无法获得写权限」，
+    # 用户看到的是完全误导的提示。
     param([string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path)) {
-        return $false
+        return "missing"
     }
 
     try {
@@ -561,11 +567,51 @@ function Test-WriteAccess {
             $stream = [IO.File]::Open($Path, "Open", "ReadWrite", "Read")
             $stream.Dispose()
         }
-        return $true
+        return $null
     }
     catch {
-        return $false
+        $ex = $_.Exception
+        while ($ex.InnerException) { $ex = $ex.InnerException }
+        $win32 = $ex.HResult -band 0xFFFF
+        # 32 = ERROR_SHARING_VIOLATION（被占用）
+        # 33 = ERROR_LOCK_VIOLATION
+        if ($win32 -eq 32 -or $win32 -eq 33) {
+            return "locked"
+        }
+        return "denied"
     }
+}
+
+function Test-WriteAccess {
+    param([string]$Path)
+
+    return ((Get-WriteAccessFailure $Path) -eq $null)
+}
+
+function Wait-WriteAccess {
+    # 等待文件真正可写。
+    #
+    # 强杀 Claude 后，238MB 的 Claude.exe 的句柄不会立刻释放（页回收要时间），
+    # 之前只 Sleep 1 秒就去测写权限，测到 ERROR_SHARING_VIOLATION 就直接
+    # 报「权限不足」并中止。这里改成轮询等待，超时才算真失败。
+    param(
+        [string]$Path,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $last = "missing"
+    while ($watch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        $last = Get-WriteAccessFailure $Path
+        if ($null -eq $last) {
+            return $true
+        }
+        if ($last -eq "missing") {
+            return $true
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return ($null -eq (Get-WriteAccessFailure $Path))
 }
 
 function Confirm-TakeOwnership {
@@ -699,6 +745,20 @@ function Grant-WriteAccess {
 
     if (Test-WriteAccess $Path) {
         return $true
+    }
+
+    # 文件被进程占着时，ACL 再怎么改也没用 —— 先等占用方放手。
+    # 之前这里直接去接管所有权，然后测一次写权限就报「无法写入」，
+    # 实际原因是 ERROR_SHARING_VIOLATION，提示完全是误导的。
+    if ((Get-WriteAccessFailure $Path) -eq "locked") {
+        Write-Host "  [等待] 文件仍被进程占用，等待释放: $Path" -ForegroundColor DarkGray
+        if (Wait-WriteAccess $Path 20) {
+            Write-Host "  [等待] 文件已释放，可以写入: $Path" -ForegroundColor DarkGray
+            return $true
+        }
+        Write-Host "  [警告] 等待超时，文件仍被占用: $Path" -ForegroundColor DarkYellow
+        Write-Host "         请完全退出 Claude Desktop（含托盘图标）后重试。" -ForegroundColor DarkYellow
+        return $false
     }
 
     if (Take-OwnershipAndGrant $Path) {
@@ -909,26 +969,45 @@ function Enable-WriteAccess {
     }
 
     $failed = @()
+    $locked = @()
     foreach ($path in $paths) {
-        if (-not (Grant-WriteAccess $path)) {
+        if (Grant-WriteAccess $path) {
+            continue
+        }
+        $reason = Get-WriteAccessFailure $path
+        if ($reason -eq "locked") {
+            $locked += $path
+        }
+        else {
             $failed += $path
         }
     }
 
-    if ($failed.Count -eq 0) {
+    if ($failed.Count -eq 0 -and $locked.Count -eq 0) {
         return $true
     }
 
-    Write-Host "  [警告] 以下位置仍无法写入：" -ForegroundColor Yellow
-    foreach ($path in $failed) {
-        Write-Host "         $path" -ForegroundColor DarkYellow
+    if ($locked.Count -gt 0) {
+        Write-Host "  [警告] 以下文件仍被进程占用，无法写入：" -ForegroundColor Yellow
+        foreach ($path in $locked) {
+            Write-Host "         $path" -ForegroundColor DarkYellow
+        }
+        Write-Host "         这不是权限问题。请完全退出 Claude Desktop（含系统托盘图标）" -ForegroundColor DarkYellow
+        Write-Host "         和 cowork-svc.exe，然后重新运行安装。" -ForegroundColor DarkYellow
     }
-    if ($ResourcesPath -match '(?i)\\WindowsApps\\AnthropicPBC\.Claude_') {
-        Write-Host "         当前是 Microsoft Store 版（MSIX/AppX）：系统会阻止修改程序文件，" -ForegroundColor DarkYellow
-        Write-Host "         接管所有权与开发者模式都绕不过；请改用官网安装包后重试。" -ForegroundColor DarkYellow
-    }
-    else {
-        Write-Host "         请确认安装脚本以管理员身份运行，并检查安全软件是否拦截了权限修改。" -ForegroundColor DarkYellow
+
+    if ($failed.Count -gt 0) {
+        Write-Host "  [警告] 以下位置仍无法写入：" -ForegroundColor Yellow
+        foreach ($path in $failed) {
+            Write-Host "         $path" -ForegroundColor DarkYellow
+        }
+        if ($ResourcesPath -match '(?i)\\WindowsApps\\AnthropicPBC\.Claude_') {
+            Write-Host "         当前是 Microsoft Store 版（MSIX/AppX）：系统会阻止修改程序文件，" -ForegroundColor DarkYellow
+            Write-Host "         接管所有权与开发者模式都绕不过；请改用官网安装包后重试。" -ForegroundColor DarkYellow
+        }
+        else {
+            Write-Host "         请确认安装脚本以管理员身份运行，并检查安全软件是否拦截了权限修改。" -ForegroundColor DarkYellow
+        }
     }
     return $false
 }
@@ -4030,6 +4109,15 @@ function Stop-ClaudeProcessesGracefully {
         return $true
     }
 
+    # 先停 CoworkVMService 服务再关桌面进程。
+    #
+    # cowork-svc.exe 由 services.exe 托管，是 Claude 的自启动/自动更新组件。
+    # 如果先关桌面进程、后停服务，服务控制管理器会把 Claude 又拉起来，
+    # 接着安装器去写 Claude.exe 时文件正被新进程占着 —— 表现就是
+    # ERROR_SHARING_VIOLATION，脚本却报成「无法获得写权限」。
+    # 顺序反过来：先掐掉拉起源，再关进程。
+    Stop-CoworkVMService
+
     foreach ($proc in $desktopProcs) {
         Write-Host "  正在请求 Claude Desktop 优雅退出 (PID $($proc.Id))..." -ForegroundColor DarkGray
         try {
@@ -4053,7 +4141,9 @@ function Stop-ClaudeProcessesGracefully {
                 # 已退出或无法终止
             }
         }
-        Start-Sleep -Seconds 1
+        # 强杀后进程句柄不会立刻释放（Claude.exe 有 238MB，页回收要时间）。
+        # 这里等到进程真正消失，再等文件可写，避免后面误判成权限问题。
+        [void](Wait-ProcessesExit $remainingDesktop 10)
     }
 
     # cowork-svc.exe 不叫 claude.exe，旧逻辑不会停它；恢复/覆盖 app.asar 时它可能继续占用资源。

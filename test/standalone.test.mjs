@@ -48,6 +48,51 @@ test("商店版 exe 在 app 子目录，版本检测要能定位", async () => {
   assert.match(body, /app\\claude\.exe/, "探测 app 子目录（小写）");
 });
 
+test("写入失败区分「被占用」和「权限不足」", async () => {
+  const script = (await read("scripts/install_windows.ps1")).replaceAll("\r\n", "\n");
+  assert.match(script, /function Get-WriteAccessFailure/, "提供失败原因分类");
+  assert.match(script, /"locked"/, "识别被进程占用");
+  assert.match(script, /"denied"/, "识别权限不足");
+  // 32 = ERROR_SHARING_VIOLATION，33 = ERROR_LOCK_VIOLATION
+  assert.match(script, /\$win32 -eq 32 -or \$win32 -eq 33/, "按 Win32 错误码判定占用");
+
+  // 上层必须把 locked 和 denied 分开报告，不能一律说成权限问题。
+  assert.match(script, /这?不是权限问题/, "被占用时给出正确提示");
+  assert.match(script, /仍被进程占用，无法写入/, "被占用与无权限分开提示");
+});
+
+test("强杀 Claude 后等待文件句柄释放再测写权限", async () => {
+  const script = (await read("scripts/install_windows.ps1")).replaceAll("\r\n", "\n");
+  assert.match(script, /function Wait-WriteAccess/, "提供等待可写的轮询");
+  assert.match(script, /Wait-WriteAccess \$Path 20/, "被占用时等待释放");
+  // 强杀之后必须等进程真正退出，而不是固定睡 1 秒。
+  const stopStart = script.indexOf("function Stop-ClaudeProcessesGracefully");
+  const stopBody = script.slice(stopStart, script.indexOf("function Stop-ClaudeProcesses {"));
+  assert.match(stopBody, /Wait-ProcessesExit \$remainingDesktop/, "强杀后等待进程真正退出");
+});
+
+test("先停 Cowork 服务再关桌面进程，避免 Claude 被拉回", async () => {
+  const script = (await read("scripts/install_windows.ps1")).replaceAll("\r\n", "\n");
+  const stopStart = script.indexOf("function Stop-ClaudeProcessesGracefully");
+  const stopBody = script.slice(stopStart, script.indexOf("function Stop-ClaudeProcesses {"));
+  const serviceIndex = stopBody.indexOf("Stop-CoworkVMService");
+  const closeIndex = stopBody.indexOf("CloseMainWindow");
+  assert.ok(serviceIndex > 0, "有关闭 Cowork 服务");
+  assert.ok(closeIndex > 0, "有关闭桌面进程");
+  assert.ok(serviceIndex < closeIndex, "必须先停服务再关进程，否则 Claude 会被服务拉回");
+});
+
+test("独立版在开始前检测运行中的 Claude 并提醒", async () => {
+  const program = await read("standalone/Program.cs");
+  assert.match(program, /public static bool IsClaudeRunning\(\)/, "提供运行中检测");
+  assert.match(program, /GetProcessesByName\("claude"\)/, "按进程名查找");
+  assert.match(program, /WindowsApps|AnthropicClaude/, "只认 Claude Desktop，排除同名 CLI");
+
+  const form = await read("standalone/MainForm.cs");
+  assert.match(form, /IsClaudeRunning\(\)/, "界面调用运行中检测");
+  assert.match(form, /请先关闭 Claude/, "给出明确提示");
+});
+
 test("没有补丁可卸时直接返回，不关闭 Claude、不改写 Claude.exe", async () => {
   const script = await read("scripts/install_windows.ps1");
   const start = script.indexOf("function Uninstall-WindowsLanguagePack");

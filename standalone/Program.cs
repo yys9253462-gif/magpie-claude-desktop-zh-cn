@@ -60,6 +60,41 @@ public static class Installer
         catch { return ""; }
     }
 
+    /// <summary>
+    /// 检测正在运行的 Claude Desktop 进程（不含 Claude Code 的 CLI 进程）。
+    /// 安装补丁需要改写 Claude.exe，运行中的实例会锁住文件，
+    /// 表现是 ERROR_SHARING_VIOLATION，而不是权限问题。
+    /// </summary>
+    public static bool IsClaudeRunning()
+    {
+        try
+        {
+            using var current = Process.GetCurrentProcess();
+            foreach (var process in Process.GetProcessesByName("claude"))
+            {
+                try
+                {
+                    var path = process.MainModule?.FileName;
+                    if (string.IsNullOrEmpty(path)) continue;
+                    // 只认 Claude Desktop 的可执行文件，跳过同名的 CLI。
+                    if (!path.EndsWith("Claude.exe", StringComparison.OrdinalIgnoreCase) &&
+                        !path.EndsWith("claude.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (path.Contains("WindowsApps", StringComparison.OrdinalIgnoreCase) ||
+                        path.Contains("AnthropicClaude", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // 无权读取 MainModule 时跳过
+                }
+            }
+        }
+        catch { }
+        return false;
+    }
+
     public static async Task<InstallResult> RunAsync(
         string action,
         string language,

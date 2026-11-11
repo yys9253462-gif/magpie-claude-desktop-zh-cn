@@ -132,6 +132,19 @@ public sealed class MainForm : Form
     private async Task RunAsync(string action)
     {
         if (busy) return;
+
+        // 安装/恢复都要改写 Claude.exe，运行中的实例会锁住文件。
+        // 先提醒用户关掉，避免到脚本里才报「无法获得写权限」这种误导提示。
+        if (Installer.IsClaudeRunning())
+        {
+            var answer = MessageBox.Show(
+                "检测到 Claude Desktop 正在运行。\n\n" +
+                "安装补丁需要改写 Claude.exe，运行中的实例会锁住文件导致失败。\n\n" +
+                "是否现在关闭 Claude Desktop 并继续？",
+                "请先关闭 Claude", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (answer != DialogResult.Yes) return;
+        }
+
         busy = true;
         install.Enabled = restore.Enabled = language.Enabled = ownership.Enabled = false;
         progress.Visible = true;
@@ -146,6 +159,10 @@ public sealed class MainForm : Form
             var success = result.ExitCode == 0;
             status.Text = success ? action == "install" ? $"{LanguageName}安装完成，Claude 已重新打开。" : "已恢复官方文件，请重新打开 Claude。" : "安装未完成，请查看日志。可先恢复官方文件后重试。";
             AppendLog(success ? $"执行器返回成功。若界面未切换，请在 Claude 的 Language 中选择{LanguageName}。" : $"执行器退出码：{result.ExitCode}");
+            if (!success && result.Output.Contains("被进程占用", StringComparison.Ordinal))
+            {
+                AppendLog("提示：失败原因是文件仍被进程占用，不是权限问题。请完全退出 Claude Desktop（含系统托盘图标）后重试。");
+            }
             AppendLog($"日志：{result.LogPath}");
         }
         catch (Exception ex) { status.Text = "执行失败，请查看日志。"; AppendLog(ex.ToString()); }
