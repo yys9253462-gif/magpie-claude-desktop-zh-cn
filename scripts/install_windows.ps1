@@ -19,6 +19,17 @@ param(
     [string]$OriginalAppData = "",
     [string]$OriginalLocalAppData = "",
 
+    # 提权场景下环境变量不保证继承到管理员进程，调用方用这个参数显式指定日志位置，
+    # 让普通权限的界面能实时读到提权子进程的进度。
+    [string]$StageLogPath = "",
+
+    # 自动化调用（Magpie 插件、独立 EXE）不需要联网检查上游新版本。
+    [switch]$SkipUpdateCheck,
+
+    # 自检模式：只走参数解析、权限探测与备份检测，绝不关闭 Claude、
+    # 绝不改写 asar / Claude.exe。用来自检调用链，不触碰真实安装。
+    [switch]$SelfTest,
+
     # 非交互安装（脚本调用、自动化）默认不允许接管 WindowsApps 的所有权。
     # 需要显式授权，避免在没人确认的情况下静默改动系统保护目录的 ACL。
     [switch]$AllowTakeOwnership
@@ -27,6 +38,32 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
+# Write-Host 在控制台管道断掉时会抛终止错误（GetConsoleScreenBufferInfo 0xE9
+# "No process is on the other end of the pipe"）。窗口被关、输出被重定向、
+# 或者调用方提前断开管道时都会发生，而这会让整个安装流程中断 —— 连错误
+# 提示都打不出来。
+#
+# 这里包一层 try/catch，但仍然调用真正的 Write-Host cmdlet：
+# Start-Transcript 录的是 host 输出流，换成 [Console]::Out.Write 就不再进
+# transcript，提权子进程的进度就回传不到界面了。
+function Write-Host {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, ValueFromPipeline = $true, ValueFromRemainingArguments = $true)]
+        [object]$Object,
+        [switch]$NoNewline,
+        [object]$Separator,
+        [string]$ForegroundColor,
+        [string]$BackgroundColor
+    )
+    try {
+        Microsoft.PowerShell.Utility\Write-Host @PSBoundParameters
+    }
+    catch {
+        # 输出通道彻底不可用时静默忽略，不能让它打断安装流程。
+    }
+}
 $BaseLanguageList = '["en-US","de-DE","fr-FR","ko-KR","ja-JP","es-419","es-ES","it-IT","hi-IN","pt-BR","id-ID"'
 $LanguageListPattern = [System.Text.RegularExpressions.Regex]::Escape($BaseLanguageList) + '(?:(?:,"zh-CN")|(?:,"zh-TW")|(?:,"zh-HK"))*\]'
 $AsarIntegrityBlockSize = 4 * 1024 * 1024
@@ -42,6 +79,8 @@ if ($OriginalUserSid) { $env:CLAUDE_ZH_ORIGINAL_USER_SID = $OriginalUserSid }
 if ($OriginalUserProfile) { $env:CLAUDE_ZH_ORIGINAL_USER_PROFILE = $OriginalUserProfile }
 if ($OriginalAppData) { $env:CLAUDE_ZH_ORIGINAL_APPDATA = $OriginalAppData }
 if ($OriginalLocalAppData) { $env:CLAUDE_ZH_ORIGINAL_LOCALAPPDATA = $OriginalLocalAppData }
+if ($StageLogPath) { $env:CLAUDE_ZH_STAGE_LOG = $StageLogPath }
+if ($SkipUpdateCheck) { $env:CLAUDE_ZH_SKIP_UPDATE_CHECK = "1" }
 
 function Start-InstallLog {
     try {
@@ -333,14 +372,28 @@ function Find-ClaudePath {
 function Get-ClaudeExeProductVersion {
     param([string]$ClaudePath)
 
-    foreach ($name in @("Claude.exe", "claude.exe")) {
-        $exePath = Join-Path $ClaudePath $name
+    if (-not $ClaudePath) {
+        return "未知"
+    }
+
+    # 商店版（AppX）的包根目录下没有 exe，实际在 app\ 子目录里；
+    # 非商店版则是包根本身就是 exe 所在目录。所以两种都要试。
+    $candidates = @(
+        (Join-Path $ClaudePath "Claude.exe"),
+        (Join-Path $ClaudePath "claude.exe"),
+        (Join-Path $ClaudePath "app\Claude.exe"),
+        (Join-Path $ClaudePath "app\claude.exe")
+    )
+    foreach ($exePath in $candidates) {
         if (Test-Path -LiteralPath $exePath) {
             try {
-                return [string](Get-Item -LiteralPath $exePath).VersionInfo.ProductVersion
+                $version = [string](Get-Item -LiteralPath $exePath).VersionInfo.ProductVersion
+                if ($version) {
+                    return $version
+                }
             }
             catch {
-                return "未知"
+                # 读不到版本信息就继续试下一个候选
             }
         }
     }
@@ -4187,10 +4240,6 @@ function Uninstall-WindowsLanguagePack {
     # 让从旧版升级的用户不会残留计划任务和便携运行时。
     Remove-LegacyFridaResident
 
-    Write-Step "关闭 Claude Desktop"
-    Stop-ClaudeProcesses
-    Remove-LegacyAppxForkArtifacts
-
     # 卸载路径同样要写回备份、重同步 exe 哈希，所以也得先把权限拿到。
     # 之前只有安装流程调过，ACL 一旦被系统修复 / 安全软件 / 手动 icacls 重置，
     # 预清理会在 Restore-LatestBackup 或 Sync-ClaudeExeAsarIntegrity 处抛错，
@@ -4210,12 +4259,25 @@ function Uninstall-WindowsLanguagePack {
     )
     $hasLang = @($langCandidates | Where-Object { Test-Path -LiteralPath $_ }).Count -gt 0
 
+    # 没有补丁可卸时直接退出：既不用关 Claude，也不用去改写 Claude.exe。
+    # 之前这里会先关掉 Claude，再去写 Claude.exe 的完整性哈希 —— 在没打过补丁
+    # 的机器上这一步必然因权限被拒而报错，用户看到的是「恢复官方文件失败」
+    # 外加 Claude 被平白关掉，两头都亏。
+    if (-not ($hasBackup -or $hasLang)) {
+        Write-Host "  未检测到中文补丁（无备份、无中文资源），无需恢复。" -ForegroundColor DarkGray
+        Write-Host "  Claude Desktop 未做任何改动，也没有被关闭。" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "卸载完成（无补丁可卸）。" -ForegroundColor Green
+        return
+    }
+
+    Write-Step "关闭 Claude Desktop"
+    Stop-ClaudeProcesses
+    Remove-LegacyAppxForkArtifacts
+
     if ($hasBackup -or $hasLang) {
         Write-Step "确认写入权限"
         Assert-WriteAccess $resourcesPath "卸载"
-    }
-    else {
-        Write-Host "  未检测到中文补丁（无备份、无中文资源），跳过权限检查。" -ForegroundColor DarkGray
     }
 
     Write-Step "[1/4] 恢复前端 bundle 和 app.asar"
@@ -4279,6 +4341,57 @@ function Remove-LegacyFridaResident {
     }
 }
 
+function Invoke-SelfTest {
+    # 自检只读不写：不关闭 Claude、不改写 asar / Claude.exe、不动 ACL。
+    # 目的是验证调用链（参数解析、Claude 探测、备份检测、资源加载）没有断。
+    Write-Host "=== 自检模式（只读，不修改任何文件） ===" -ForegroundColor Cyan
+
+    Write-Host "[1/4] 解析结果" -ForegroundColor Cyan
+    Write-Host "  Action=$Action Language=$LanguageCode SelfTest=$($SelfTest.IsPresent)" -ForegroundColor DarkGray
+
+    Write-Host "[2/4] 探测 Claude 安装" -ForegroundColor Cyan
+    $paths = Get-ClaudeResourcesPath
+    $resourcesPath = $paths["Resources"]
+    $appPath = $paths["App"]
+    Write-Host "  App: $appPath" -ForegroundColor DarkGray
+    Write-Host "  Resources: $resourcesPath" -ForegroundColor DarkGray
+
+    Write-Host "[3/4] 检查现有补丁状态" -ForegroundColor Cyan
+    $backupRoot = Get-BackupRoot $resourcesPath
+    $hasBackup = Test-Path -LiteralPath $backupRoot
+    $langCandidates = @(
+        (Join-Path $resourcesPath "zh-CN.json"),
+        (Join-Path $resourcesPath "zh-TW.json"),
+        (Join-Path $resourcesPath "zh-HK.json"),
+        (Join-Path $resourcesPath "ion-dist\i18n\zh-CN.json"),
+        (Join-Path $resourcesPath "ion-dist\i18n\zh-TW.json"),
+        (Join-Path $resourcesPath "ion-dist\i18n\zh-HK.json")
+    )
+    $foundLang = @($langCandidates | Where-Object { Test-Path -LiteralPath $_ })
+    Write-Host "  备份目录存在: $hasBackup" -ForegroundColor DarkGray
+    Write-Host "  中文资源数量: $($foundLang.Count)" -ForegroundColor DarkGray
+    foreach ($lang in $foundLang) {
+        Write-Host "    $lang" -ForegroundColor DarkGray
+    }
+
+    Write-Host "[4/4] 校验内嵌前端资源" -ForegroundColor Cyan
+    $resourceRoot = Split-Path -Parent $PSScriptRoot
+    $frontendFiles = @(
+        (Join-Path $resourceRoot "resources\frontend-zh-CN.json"),
+        (Join-Path $resourceRoot "resources\frontend-hardcoded-zh-CN.json")
+    )
+    $missing = @($frontendFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
+    if ($missing.Count -gt 0) {
+        foreach ($file in $missing) {
+            Write-Host "  缺失: $file" -ForegroundColor Red
+        }
+        throw "自检失败：中文资源不完整。"
+    }
+    Write-Host "  中文资源完整" -ForegroundColor Green
+
+    Write-Host "=== 自检通过（未做任何修改） ===" -ForegroundColor Green
+}
+
 function Invoke-PreInstallCleanup {
     if ($script:PreInstallCleanupDone) {
         return
@@ -4315,6 +4428,12 @@ try {
         $Action = $interactiveSelection.Action
         $Language = $interactiveSelection.Language
         $LanguageCode = $Language
+    }
+
+    if ($SelfTest) {
+        Invoke-SelfTest
+        Stop-InstallLog
+        exit 0
     }
 
     switch ($Action) {
