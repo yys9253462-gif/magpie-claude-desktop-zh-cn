@@ -19,6 +19,40 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Disable-ConsoleQuickEdit {
+    try {
+        if (-not ("ClaudeZh.ConsoleModeHelper" -as [type])) {
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace ClaudeZh {
+    public static class ConsoleModeHelper {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr GetStdHandle(int nStdHandle);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+        public static void DisableQuickEdit() {
+            IntPtr handle = GetStdHandle(-10);
+            if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return;
+            uint mode;
+            if (!GetConsoleMode(handle, out mode)) return;
+            mode &= ~0x0040u; // ENABLE_QUICK_EDIT_MODE
+            mode |= 0x0080u;  // ENABLE_EXTENDED_FLAGS
+            SetConsoleMode(handle, mode);
+        }
+    }
+}
+"@ -ErrorAction Stop | Out-Null
+        }
+        [ClaudeZh.ConsoleModeHelper]::DisableQuickEdit()
+    } catch {}
+}
+Disable-ConsoleQuickEdit
+
+
 try {
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 } catch {}

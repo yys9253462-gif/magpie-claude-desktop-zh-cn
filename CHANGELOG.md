@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- **新增 Antigravity 桌面端简体中文汉化**：基于 `MIMICTE/Antigravity-zh-CN`（MIT）提取词典与注入引擎，以纯 PowerShell 实现 ASAR 解包、幂等注入与无损还原，零 Python 运行时依赖。
+- **双端统一界面**：独立 Windows 程序（`ClaudeDesktop-ZH-CN.exe`）与 Magpie 插件页面均支持切换 `Claude Desktop` / `Antigravity`，并自动探测目标版本与汉化状态。
+- **根治控制台误点卡死**：在安装脚本与提权包装脚本开头自动禁用 Windows 控制台「快速编辑模式（QuickEdit）」，防止鼠标误点窗口进入「选择」挂起状态。
+- **极速 ASAR 打包重构**：将 `New-AsarArchive` 改为内联 C# 原生流式打包与哈希复用（`FastAsarPacker`），解决新版 `ion-dist.asar`（4781+ 文件）纯 PowerShell 打包耗时 20 分钟以上的性能瓶颈（5000 文件实测 < 1 秒）。
 ## macOS 0.1.0 — 2026-11-11
 
 - 新增包含 `.app` 和 `.command` 入口的 macOS ZIP，先选语言、确认后才执行。

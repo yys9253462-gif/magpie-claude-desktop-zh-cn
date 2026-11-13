@@ -407,6 +407,7 @@ public static class Installer
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
         sb.AppendLine("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()");
+        sb.AppendLine("try { Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class QEC { [DllImport(\"kernel32.dll\")] static extern IntPtr GetStdHandle(int n); [DllImport(\"kernel32.dll\")] static extern bool GetConsoleMode(IntPtr h, out uint m); [DllImport(\"kernel32.dll\")] static extern bool SetConsoleMode(IntPtr h, uint m); public static void Off(){ IntPtr h=GetStdHandle(-10); uint m; if(GetConsoleMode(h,out m)) SetConsoleMode(h,(m & ~0x0040u)|0x0080u); } }'; [QEC]::Off() } catch {}");
         sb.AppendLine($"$env:CLAUDE_ZH_STAGE_LOG = {PsLiteral(logPath)}");
         sb.AppendLine("$env:CLAUDE_ZH_SKIP_UPDATE_CHECK = '1'");
         sb.AppendLine("$env:PYTHONUTF8 = '1'");

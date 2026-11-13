@@ -36,6 +36,40 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Disable-ConsoleQuickEdit {
+    try {
+        if (-not ("ClaudeZh.ConsoleModeHelper" -as [type])) {
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace ClaudeZh {
+    public static class ConsoleModeHelper {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr GetStdHandle(int nStdHandle);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+        public static void DisableQuickEdit() {
+            IntPtr handle = GetStdHandle(-10);
+            if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return;
+            uint mode;
+            if (!GetConsoleMode(handle, out mode)) return;
+            mode &= ~0x0040u; // ENABLE_QUICK_EDIT_MODE
+            mode |= 0x0080u;  // ENABLE_EXTENDED_FLAGS
+            SetConsoleMode(handle, mode);
+        }
+    }
+}
+"@ -ErrorAction Stop | Out-Null
+        }
+        [ClaudeZh.ConsoleModeHelper]::DisableQuickEdit()
+    } catch {}
+}
+Disable-ConsoleQuickEdit
+
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
@@ -1628,97 +1662,167 @@ function New-AsarArchive {
         throw "缺少 ASAR 输出路径。"
     }
 
-    $payloadEntries = New-Object System.Collections.Generic.List[object]
-    $offsetState = [pscustomobject]@{ Offset = [int64]0 }
-    # 手工拼装紧凑 JSON。ConvertTo-Json 在数千个嵌套节点上会构建完整 PSObject 图，
-    # 183MB 的 ion-dist.asar 实测会被撑到十几 GB 内存，因此这里完全绕开它。
-    $headerJson = New-Object System.Text.StringBuilder
-    [void]$headerJson.Append('{"files":{')
+    if (-not ("ClaudeZh.FastAsarPacker" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 
-    $appendNode = {
-        param([string]$Directory)
-
-        $first = $true
-        foreach ($item in @(Get-ChildItem -LiteralPath $Directory -Force | Sort-Object Name)) {
-            if (-not $first) {
-                [void]$headerJson.Append(',')
-            }
-            $first = $false
-            # 文件名来自文件系统，Windows 不允许反斜杠和双引号，这里只做保险性转义。
-            $name = $item.Name.Replace('\', '\\').Replace('"', '\"')
-            [void]$headerJson.Append('"').Append($name).Append('"')
-
-            if ($item.PSIsContainer) {
-                [void]$headerJson.Append(':{"files":{')
-                & $appendNode $item.FullName
-                [void]$headerJson.Append('}}')
-                continue
-            }
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq [IO.FileAttributes]::ReparsePoint) {
-                throw "ASAR 源目录包含不支持的软链接: $($item.FullName)"
-            }
-
-            $offset = [int64]$offsetState.Offset
-            $size = [int64]$item.Length
-            $integrity = Get-AsarFileIntegrity $item.FullName
-
-            [void]$headerJson.Append(':{"size":').Append($size).Append(',"offset":"').Append($offset).Append('","integrity":{"algorithm":"')
-            [void]$headerJson.Append($integrity.algorithm).Append('","hash":"').Append($integrity.hash)
-            [void]$headerJson.Append('","blockSize":').Append($integrity.blockSize).Append(',"blocks":[')
-            $blockSeparator = ''
-            foreach ($block in $integrity.blocks) {
-                [void]$headerJson.Append($blockSeparator).Append('"').Append($block).Append('"')
-                $blockSeparator = ','
-            }
-            [void]$headerJson.Append(']}}')
-
-            $payloadEntries.Add([pscustomobject]@{ Path = $item.FullName; Size = $size })
-            $offsetState.Offset += $size
+namespace ClaudeZh {
+    public static class FastAsarPacker {
+        private sealed class PayloadEntry {
+            public string FullPath;
+            public long Size;
         }
-    }
 
-    & $appendNode ([IO.Path]::GetFullPath($SourceDirectory))
-    [void]$headerJson.Append('}}')
+        private static string ToHex(byte[] hash) {
+            char[] c = new char[hash.Length * 2];
+            const string hex = "0123456789abcdef";
+            for (int i = 0; i < hash.Length; i++) {
+                byte b = hash[i];
+                c[i * 2] = hex[b >> 4];
+                c[i * 2 + 1] = hex[b & 0x0F];
+            }
+            return new string(c);
+        }
 
-    $headerStringBytes = [Text.Encoding]::UTF8.GetBytes($headerJson.ToString())
-    $headerPayloadSize = Align-4 (4 + $headerStringBytes.Length)
-    $headerSize = 4 + $headerPayloadSize
-    $headerPickle = [byte[]]::new($headerSize)
-    [Array]::Copy([BitConverter]::GetBytes([uint32]$headerPayloadSize), 0, $headerPickle, 0, 4)
-    [Array]::Copy([BitConverter]::GetBytes([int32]$headerStringBytes.Length), 0, $headerPickle, 4, 4)
-    [Array]::Copy($headerStringBytes, 0, $headerPickle, 8, $headerStringBytes.Length)
+        private static void AppendNode(
+            DirectoryInfo dir,
+            StringBuilder headerJson,
+            List<PayloadEntry> entries,
+            ref long offset,
+            int blockSize,
+            byte[] buffer,
+            SHA256 wholeSha,
+            SHA256 blockSha) {
 
-    $prefix = [byte[]]::new(8)
-    [Array]::Copy([BitConverter]::GetBytes([uint32]4), 0, $prefix, 0, 4)
-    [Array]::Copy([BitConverter]::GetBytes([uint32]$headerSize), 0, $prefix, 4, 4)
+            FileSystemInfo[] items = dir.GetFileSystemInfos();
+            Array.Sort(items, delegate(FileSystemInfo a, FileSystemInfo b) {
+                return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+            });
 
-    $destinationFull = [IO.Path]::GetFullPath($DestinationPath)
-    $parent = Split-Path -Parent $destinationFull
-    New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $temporary = "$destinationFull.tmp-" + [guid]::NewGuid().ToString("N")
-    try {
-        $output = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-        try {
-            $output.Write($prefix, 0, $prefix.Length)
-            $output.Write($headerPickle, 0, $headerPickle.Length)
-            foreach ($entry in $payloadEntries) {
-                $entryStream = [IO.File]::OpenRead($entry.Path)
-                try {
-                    $entryStream.CopyTo($output)
+            bool first = true;
+            for (int idx = 0; idx < items.Length; idx++) {
+                FileSystemInfo item = items[idx];
+                if (!first) headerJson.Append(',');
+                first = false;
+
+                string escaped = item.Name.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                headerJson.Append('"').Append(escaped).Append('"');
+
+                DirectoryInfo subDir = item as DirectoryInfo;
+                if (subDir != null) {
+                    headerJson.Append(":{\"files\":{");
+                    AppendNode(subDir, headerJson, entries, ref offset, blockSize, buffer, wholeSha, blockSha);
+                    headerJson.Append("}}");
+                    continue;
                 }
-                finally {
-                    $entryStream.Dispose()
+
+                if ((item.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint) {
+                    throw new InvalidOperationException("ASAR 源目录包含不支持的软链接: " + item.FullName);
                 }
+
+                FileInfo fi = (FileInfo)item;
+                long size = fi.Length;
+
+                wholeSha.Initialize();
+                List<string> blocks = new List<string>();
+                using (FileStream fs = File.OpenRead(fi.FullName)) {
+                    while (true) {
+                        int filled = 0;
+                        while (filled < blockSize) {
+                            int read = fs.Read(buffer, filled, blockSize - filled);
+                            if (read <= 0) break;
+                            filled += read;
+                        }
+                        if (filled <= 0) break;
+                        wholeSha.TransformBlock(buffer, 0, filled, null, 0);
+                        blockSha.Initialize();
+                        byte[] blockHash = blockSha.ComputeHash(buffer, 0, filled);
+                        blocks.Add(ToHex(blockHash));
+                        if (filled < blockSize) break;
+                    }
+                }
+                wholeSha.TransformFinalBlock(new byte[0], 0, 0);
+                string wholeHex = ToHex(wholeSha.Hash);
+                if (blocks.Count == 0) blocks.Add(wholeHex);
+
+                headerJson.Append(":{\"size\":").Append(size)
+                    .Append(",\"offset\":\"").Append(offset)
+                    .Append("\",\"integrity\":{\"algorithm\":\"SHA256\",\"hash\":\"").Append(wholeHex)
+                    .Append("\",\"blockSize\":").Append(blockSize)
+                    .Append(",\"blocks\":[");
+                for (int b = 0; b < blocks.Count; b++) {
+                    if (b > 0) headerJson.Append(',');
+                    headerJson.Append('"').Append(blocks[b]).Append('"');
+                }
+                headerJson.Append("]}}");
+
+                entries.Add(new PayloadEntry { FullPath = fi.FullName, Size = size });
+                offset += size;
             }
         }
-        finally {
-            $output.Dispose()
+
+        public static void Pack(string sourceDirectory, string destinationPath, int blockSize) {
+            string fullSrc = Path.GetFullPath(sourceDirectory);
+            string fullDst = Path.GetFullPath(destinationPath);
+            string parent = Path.GetDirectoryName(fullDst);
+            if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+
+            StringBuilder headerJson = new StringBuilder(65536);
+            headerJson.Append("{\"files\":{");
+            List<PayloadEntry> entries = new List<PayloadEntry>(5120);
+            long offset = 0;
+            byte[] hashBuffer = new byte[blockSize];
+
+            using (SHA256 wholeSha = SHA256.Create())
+            using (SHA256 blockSha = SHA256.Create()) {
+                AppendNode(new DirectoryInfo(fullSrc), headerJson, entries, ref offset, blockSize, hashBuffer, wholeSha, blockSha);
+            }
+            headerJson.Append("}}");
+
+            byte[] headerBytes = Encoding.UTF8.GetBytes(headerJson.ToString());
+            int rawPayloadSize = 4 + headerBytes.Length;
+            int headerPayloadSize = (rawPayloadSize + 3) & ~3;
+            int headerSize = 4 + headerPayloadSize;
+            byte[] headerPickle = new byte[headerSize];
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)headerPayloadSize), 0, headerPickle, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes((int)headerBytes.Length), 0, headerPickle, 4, 4);
+            Buffer.BlockCopy(headerBytes, 0, headerPickle, 8, headerBytes.Length);
+
+            byte[] prefix = new byte[8];
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)4), 0, prefix, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)headerSize), 0, prefix, 4, 4);
+
+            string tempPath = fullDst + ".tmp-" + Guid.NewGuid().ToString("N");
+            try {
+                byte[] copyBuffer = new byte[131072];
+                using (FileStream outFs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 131072)) {
+                    outFs.Write(prefix, 0, prefix.Length);
+                    outFs.Write(headerPickle, 0, headerPickle.Length);
+                    for (int i = 0; i < entries.Count; i++) {
+                        using (FileStream inFs = new FileStream(entries[i].FullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 131072)) {
+                            int r;
+                            while ((r = inFs.Read(copyBuffer, 0, copyBuffer.Length)) > 0) {
+                                outFs.Write(copyBuffer, 0, r);
+                            }
+                        }
+                    }
+                }
+                if (File.Exists(fullDst)) File.Delete(fullDst);
+                File.Move(tempPath, fullDst);
+            } finally {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch {}
+            }
         }
-        Move-Item -LiteralPath $temporary -Destination $destinationFull -Force
     }
-    finally {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+}
+"@ -ErrorAction Stop | Out-Null
     }
+
+    [ClaudeZh.FastAsarPacker]::Pack($SourceDirectory, $DestinationPath, $AsarIntegrityBlockSize)
 }
 
 function Remove-GeneratedFrontendWorkspace {
