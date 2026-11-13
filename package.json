@@ -1,5 +1,5 @@
 {
-  "name": "magpie-claude-desktop-zh-cn",
+  "name": "claude-ag-zh",
   "version": "0.1.2",
   "description": "在 Magpie 中管理 Windows Claude Desktop 第三方 API 模式的中文界面。",
   "type": "module",
