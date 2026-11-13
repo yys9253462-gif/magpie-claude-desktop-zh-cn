@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="claude-zh-token" content="__CLAUDE_ZH_TOKEN__">
 <meta name="claude-zh-base" content="__CLAUDE_ZH_BASE__">
-<title>Claude Desktop 中文 · Magpie</title>
+<title>Claude Desktop 中文 & Antigravity · Magpie</title>
 <link rel="stylesheet" href="style.css">
 <script src="app.js" defer></script>
 </head>
@@ -13,21 +13,29 @@
 <main>
   <header class="heading">
     <div class="brand">中</div>
-    <div><p class="eyebrow">MAGPIE · 本机工具</p><h1>Claude Desktop 中文</h1><p class="subtitle">为第三方 API 模式添加简体中文或繁体中文界面。</p></div>
+    <div><p class="eyebrow">MAGPIE · 本机工具</p><h1>桌面端中文助手</h1><p class="subtitle">为 Claude Desktop 第三方 API 模式与 Antigravity 桌面端添加中文界面。</p></div>
   </header>
 
   <section class="notice" id="scope">
-    <strong>修改的是这台电脑上的 Claude Desktop</strong>
-    <p>补丁不配置 API、不读取密钥。安装会关闭并重新打开 Claude；当前未对 Claude 4.23118 系列完成实机兼容验证。</p>
+    <strong id="scope-title">修改的是这台电脑上的桌面端</strong>
+    <p id="scope-desc">补丁不配置 API、不读取密钥。安装会关闭并重新打开目标应用；当前未对 Claude 4.23118/5.1231 系列及 Antigravity 新版完成全部实机目视验收。</p>
+  </section>
+
+  <section class="card">
+    <div class="section-title"><h2>选择目标应用</h2><span class="tag" id="target-tag">双客户端支持</span></div>
+    <div class="target-tabs" role="tablist" aria-label="目标应用">
+      <button type="button" class="target-tab active" id="target-claude" data-target="claude"><strong>Claude Desktop</strong><small>支持简/繁三语 · 需关闭 Claude</small></button>
+      <button type="button" class="target-tab" id="target-antigravity" data-target="antigravity"><strong>Antigravity</strong><small>支持简体中文 · 适配 v2.21.1 架构</small></button>
+    </div>
   </section>
 
   <section class="card">
     <div class="section-title"><h2>安装环境</h2><span class="tag" id="support">检测中</span></div>
     <dl class="details">
       <div><dt>运行平台</dt><dd id="platform">—</dd></div>
-      <div><dt>Claude 版本</dt><dd id="version">—</dd></div>
+      <div><dt id="version-label">客户端版本</dt><dd id="version">—</dd></div>
       <div><dt>安装方式</dt><dd id="kind">—</dd></div>
-      <div><dt>汉化源码</dt><dd>javaht/claude-desktop-zh-cn · 1.4.23</dd></div>
+      <div><dt>汉化源码</dt><dd id="upstream-source">javaht/claude-desktop-zh-cn · 1.4.23</dd></div>
     </dl>
     <p class="muted" id="detect-message">正在读取本机信息…</p>
   </section>
@@ -35,10 +43,10 @@
   <section class="card">
     <div class="section-title"><h2>选择界面语言</h2><span class="tag">MIT · 可分享</span></div>
     <label class="language"><input type="radio" name="language" value="zh-CN" checked><span><strong>简体中文</strong><small>zh-CN</small></span></label>
-    <label class="language"><input type="radio" name="language" value="zh-TW"><span><strong>繁體中文（台灣）</strong><small>zh-TW</small></span></label>
-    <label class="language"><input type="radio" name="language" value="zh-HK"><span><strong>繁體中文（香港）</strong><small>zh-HK</small></span></label>
+    <label class="language" id="lang-tw-row"><input type="radio" name="language" value="zh-TW"><span><strong>繁體中文（台灣）</strong><small>zh-TW</small></span></label>
+    <label class="language" id="lang-hk-row"><input type="radio" name="language" value="zh-HK"><span><strong>繁體中文（香港）</strong><small>zh-HK</small></span></label>
     <div class="actions"><button class="primary" id="install" type="button">安装中文补丁</button><button id="uninstall" type="button">恢复官方文件</button><button class="quiet" id="refresh" type="button">刷新状态</button></div>
-    <p class="muted">安装后若未自动切换，请在 Claude 左下角 Language 中选择中文。</p>
+    <p class="muted" id="post-install-hint">安装后若未自动切换，请在 Claude 左下角 Language 中选择中文。</p>
     <div class="confirm-box" id="confirm-box" hidden role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
       <strong id="confirm-title">请确认本机操作</strong>
       <p id="confirm-text"></p>
@@ -64,6 +72,6 @@
 
   <p id="status" class="status" role="status" aria-live="polite"></p>
 </main>
-<footer>基于 <a href="https://github.com/javaht/claude-desktop-zh-cn">javaht/claude-desktop-zh-cn</a> 的 MIT 源码改编。非 Anthropic 官方项目。</footer>
+<footer>基于 <a href="https://github.com/javaht/claude-desktop-zh-cn">javaht/claude-desktop-zh-cn</a> 与 <a href="https://github.com/MIMICTE/Antigravity-zh-CN">MIMICTE/Antigravity-zh-CN</a> 的 MIT 源码改编。非官方项目。</footer>
 </body>
 </html>

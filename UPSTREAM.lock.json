@@ -4,6 +4,20 @@
   "commit": "6b611ab50e90ba546a90af2dffa00f5c2ae5a19b",
   "source": "https://github.com/javaht/claude-desktop-zh-cn",
   "license": "MIT",
-  "files": ["scripts/", "resources/"],
-  "note": "固定上游源码，保留 MIT 许可与上游说明；插件运行时不会自动下载或替换这些文件。"
+  "files": [
+    "scripts/",
+    "resources/"
+  ],
+  "note": "固定上游源码，保留 MIT 许可与上游说明；插件运行时不会自动下载或替换这些文件。",
+  "antigravity": {
+    "project": "MIMICTE/Antigravity-zh-CN",
+    "version": "v2.21.1",
+    "commit": "fd59274d939fbe3592c9c00344eceeff1cc84e31",
+    "source": "https://github.com/MIMICTE/Antigravity-zh-CN",
+    "license": "MIT",
+    "files": [
+      "resources/antigravity/"
+    ],
+    "note": "固定上游词典与注入脚本，保留 MIT 许可；运行时由纯 PowerShell 脚本完成 ASAR 解包与幂等注入，不联网下载代码。"
+  }
 }

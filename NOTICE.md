@@ -8,3 +8,12 @@
 - 新增 Magpie 页面、本机服务、任务执行器、独立 Windows 桌面程序、macOS 启动器与打包脚本、文档与测试采用 MIT 许可。
 
 Claude、Claude Desktop 与 Anthropic 的名称和商标属于其各自所有者。本项目是非官方工具，不由 Anthropic 认可或维护。上游文案可能包含 Anthropic 的产品文字；其权利不因本插件的 MIT 许可而转移。
+
+## Antigravity 汉化上游声明
+
+Antigravity 中文翻译词典与前端/菜单注入引擎基于 [MIMICTE/Antigravity-zh-CN](https://github.com/MIMICTE/Antigravity-zh-CN)（commit fd59274d939fbe3592c9c00344eceeff1cc84e31）的 MIT 许可源码。
+
+- 上游版权：Copyright (c) 2026 Antigravity-zh Contributors。
+- 上游 MIT 许可全文保留于 
+esources/antigravity/LICENSE。
+- scripts/install_antigravity_windows.ps1 以纯 PowerShell 复刻 ASAR 解包、幂等注入、进程等待与无损还原流程，零 Python 运行时依赖。

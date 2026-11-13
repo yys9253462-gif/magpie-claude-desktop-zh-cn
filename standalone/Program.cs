@@ -95,6 +95,40 @@ public static class Installer
         return false;
     }
 
+    public static bool IsAntigravityRunning()
+    {
+        try
+        {
+            return Process.GetProcessesByName("Antigravity").Length > 0;
+        }
+        catch { return false; }
+    }
+
+    public static (bool Installed, bool Patched, string Version) DetectAntigravity()
+    {
+        try
+        {
+            var localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appDir = Path.Combine(localApp, "Programs", "antigravity");
+            var exePath = Path.Combine(appDir, "Antigravity.exe");
+            var resDir = Path.Combine(appDir, "resources");
+            var asarPath = Path.Combine(resDir, "app.asar");
+            var disabledPath = asarPath + ".disabled";
+            var unpackedDir = Path.Combine(resDir, "app");
+
+            var installed = File.Exists(exePath) || File.Exists(asarPath) || File.Exists(disabledPath);
+            var patched = File.Exists(disabledPath) && Directory.Exists(unpackedDir);
+            var version = "";
+            if (File.Exists(exePath))
+            {
+                var info = FileVersionInfo.GetVersionInfo(exePath);
+                version = info.ProductVersion ?? info.FileVersion ?? "";
+            }
+            return (installed, patched, version);
+        }
+        catch { return (false, false, ""); }
+    }
+
     public static async Task<InstallResult> RunAsync(
         string action,
         string language,
@@ -103,11 +137,15 @@ public static class Installer
         string scriptsPath,
         string resourcesPath,
         Action<string> log,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string target = "claude")
     {
+        if (target is not ("claude" or "antigravity")) throw new ArgumentException("不支持的目标应用", nameof(target));
         if (action is not ("install" or "uninstall")) throw new ArgumentException("不支持的操作", nameof(action));
         if (language is not ("zh-CN" or "zh-TW" or "zh-HK")) throw new ArgumentException("不支持的语言", nameof(language));
+        if (target == "antigravity" && language != "zh-CN") throw new ArgumentException("Antigravity 当前仅支持简体中文（zh-CN）", nameof(language));
         if (action == "uninstall" && allowTakeOwnership) throw new ArgumentException("恢复不接管目录所有权");
+        if (target == "antigravity" && allowTakeOwnership) throw new ArgumentException("Antigravity 不需要接管目录所有权");
 
         var taskDir = Path.Combine(workRoot, Guid.NewGuid().ToString("N"));
         var payloadDir = Path.Combine(taskDir, "payload");
@@ -115,8 +153,14 @@ public static class Installer
         CopyDirectory(scriptsPath, Path.Combine(payloadDir, "scripts"));
         CopyDirectory(resourcesPath, Path.Combine(payloadDir, "resources"));
 
-        var installer = Path.Combine(payloadDir, "scripts", "install_windows.ps1");
         var logPath = Path.Combine(taskDir, "install.log");
+        if (target == "antigravity")
+        {
+            var agInstaller = Path.Combine(payloadDir, "scripts", "install_antigravity_windows.ps1");
+            return await RunAntigravityDirectAsync(agInstaller, action, language, logPath, log, cancellationToken);
+        }
+
+        var installer = Path.Combine(payloadDir, "scripts", "install_windows.ps1");
         var scriptParams = BuildScriptParams(installer, action, language, allowTakeOwnership, logPath);
 
         // 勾选接管所有权时直接提权；否则先普通权限跑，权限不足再自动提权重试。
@@ -444,6 +488,67 @@ public static class Installer
         for (var i = 0; i + 1 < Math.Min(bytes.Length, 400); i += 2) if (bytes[i] == 0) nulCount++;
         var text = nulCount > 20 ? Encoding.Unicode.GetString(bytes) : new UTF8Encoding(false).GetString(bytes);
         return text.TrimStart('﻿');
+    }
+
+    private static async Task<InstallResult> RunAntigravityDirectAsync(
+        string installer,
+        string action,
+        string language,
+        string logPath,
+        Action<string> log,
+        CancellationToken cancellationToken,
+        bool selfTest = false)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-ExecutionPolicy");
+        psi.ArgumentList.Add("Bypass");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(installer);
+        psi.ArgumentList.Add(action);
+        psi.ArgumentList.Add(language);
+        psi.ArgumentList.Add("-OriginalLocalAppData");
+        psi.ArgumentList.Add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+        psi.ArgumentList.Add("-StageLogPath");
+        psi.ArgumentList.Add(logPath);
+        if (selfTest) psi.ArgumentList.Add("-SelfTest");
+
+        psi.Environment["CLAUDE_ZH_STAGE_LOG"] = logPath;
+
+        var output = new StringBuilder();
+        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) { output.AppendLine(e.Data); log(e.Data); } };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) { output.AppendLine(e.Data); log(e.Data); } };
+        if (!process.Start()) throw new InvalidOperationException("无法启动 Antigravity PowerShell 安装器");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        await process.WaitForExitAsync(cancellationToken);
+
+        var fileLog = ReadSharedText(logPath);
+        if (!string.IsNullOrWhiteSpace(fileLog) && !output.ToString().Contains(fileLog.Trim()))
+        {
+            output.Append(fileLog);
+            log(fileLog);
+        }
+        return new InstallResult(process.ExitCode, output.ToString(), logPath, false);
+    }
+
+    public static async Task<InstallResult> RunAntigravitySelfTest(string installer, string workDir, Action<string> log)
+    {
+        Directory.CreateDirectory(workDir);
+        var logPath = Path.Combine(workDir, "antigravity-selftest.log");
+        return await RunAntigravityDirectAsync(installer, "uninstall", "zh-CN", logPath, log, CancellationToken.None, selfTest: true);
     }
 
     private static void CopyDirectory(string source, string destination)

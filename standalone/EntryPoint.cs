@@ -21,16 +21,19 @@ internal static class EntryPoint
         Directory.CreateDirectory(root);
         var scripts = Path.Combine(Installer.PayloadRoot, "scripts");
         var resources = Path.Combine(Installer.PayloadRoot, "resources");
+        var agResources = Path.Combine(resources, "antigravity");
         if (!File.Exists(Path.Combine(scripts, "install_windows.ps1")) ||
+            !File.Exists(Path.Combine(scripts, "install_antigravity_windows.ps1")) ||
             !File.Exists(Path.Combine(resources, "frontend-zh-CN.json")) ||
-            !File.Exists(Path.Combine(resources, "frontend-hardcoded-zh-CN.json")))
+            !File.Exists(Path.Combine(resources, "frontend-hardcoded-zh-CN.json")) ||
+            !File.Exists(Path.Combine(agResources, "dom-translator.js")) ||
+            !File.Exists(Path.Combine(agResources, "menu-translator.js")))
         {
             Console.Error.WriteLine("内嵌资源不完整。");
             return 1;
         }
 
-        // 1) 直连路径：ProcessStartInfo -File + 环境变量。
-        //    使用 -SelfTest 只读模式：不会关闭 Claude，也不会改写任何文件。
+        // 1) Claude 直连路径（-SelfTest 只读模式）
         var direct = await Installer.RunDirectSelfTest(Path.Combine(scripts, "install_windows.ps1"), Path.Combine(root, "direct"), Console.WriteLine);
         Console.WriteLine($"SELF_TEST_DIRECT_EXIT={direct.ExitCode}");
         if (direct.ExitCode != 0)
@@ -39,8 +42,7 @@ internal static class EntryPoint
             return 1;
         }
 
-        // 2) 提权路径：验证包装脚本生成、参数拼装与退出码传出链路。
-        //    这里不真正提权，只跑包装脚本里的非提权分支。
+        // 2) Claude 提权包装路径（非提权自检）
         var wrapperDir = Path.Combine(root, "wrapper");
         Directory.CreateDirectory(wrapperDir);
         var wrapperCheck = await Installer.RunWrapperSelfTest(Path.Combine(scripts, "install_windows.ps1"), wrapperDir, Console.WriteLine);
@@ -48,6 +50,15 @@ internal static class EntryPoint
         if (wrapperCheck.ExitCode != 0)
         {
             Console.Error.WriteLine("提权包装路径失败。");
+            return 1;
+        }
+
+        // 3) Antigravity 只读自检路径
+        var agCheck = await Installer.RunAntigravitySelfTest(Path.Combine(scripts, "install_antigravity_windows.ps1"), Path.Combine(root, "antigravity"), Console.WriteLine);
+        Console.WriteLine($"SELF_TEST_ANTIGRAVITY_EXIT={agCheck.ExitCode}");
+        if (agCheck.ExitCode != 0)
+        {
+            Console.Error.WriteLine("Antigravity 自检路径失败。");
             return 1;
         }
 

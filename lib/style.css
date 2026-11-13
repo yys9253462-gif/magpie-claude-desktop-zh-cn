@@ -29,3 +29,7 @@ footer { max-width: 840px; margin: auto; padding: 10px 24px 30px; color: var(--m
 .confirm-box { margin-top: 16px; padding: 14px; border: 1px solid var(--accent); border-radius: 9px; background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
 .confirm-box p { margin: 7px 0; }
 @media (max-width: 520px) { main { padding: 24px 14px; } .card { padding: 16px; } h1 { font-size: 23px; } .brand { flex-basis: 48px; height: 48px; } .language span { display: block; } .details > div { grid-template-columns: 85px 1fr; } .actions button { flex: 1; } }
+.target-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.target-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 14px; text-align: left; border-radius: 9px; }
+.target-tab.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.target-tab strong { font-size: 14px; }
