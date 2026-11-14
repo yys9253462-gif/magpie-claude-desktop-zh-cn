@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-11-14
+
+- **Antigravity 全面汉化升级（5409 词条 + 347 动态正则）**：整合 `ZHUOLIN0928/antigravity-chinese-cdp`（MIT）与 `While-Shark/antigravity-zh-cn`（MIT）词典，并补齐 `v2.31.2.0` 新增的浏览器、通知与声音、语音模式（Voice mode）及反馈/极速模式等界面词条。
+- **富文本与代码隔离保护**：同步引入对 Lexical 输入框、代码块、终端、Diff 编辑器、AI 对话正文及模型选择器的物理隔离规则，并规范保留 Hook、Subagent 等原生开发术语。
 ## 0.4.0 — 2026-11-13
 
 - **新增 Antigravity 桌面端简体中文汉化**：基于 `MIMICTE/Antigravity-zh-CN`（MIT）提取词典与注入引擎，以纯 PowerShell 实现 ASAR 解包、幂等注入与无损还原，零 Python 运行时依赖。

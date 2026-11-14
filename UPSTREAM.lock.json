@@ -18,6 +18,23 @@
     "files": [
       "resources/antigravity/"
     ],
-    "note": "固定上游词典与注入脚本，保留 MIT 许可；运行时由纯 PowerShell 脚本完成 ASAR 解包与幂等注入，不联网下载代码。"
+    "note": "固定上游词典与注入脚本，保留 MIT 许可；运行时由纯 PowerShell 脚本完成 ASAR 解包与幂等注入，不联网下载代码。",
+    "dictionary_sources": [
+      {
+        "project": "MIMICTE/Antigravity-zh-CN",
+        "license": "MIT",
+        "role": "ASAR 注入与菜单/托盘适配"
+      },
+      {
+        "project": "ZHUOLIN0928/antigravity-chinese-cdp",
+        "license": "MIT",
+        "role": "5267+ 精确词条、347 动态正则与富文本/代码隔离引擎"
+      },
+      {
+        "project": "While-Shark/antigravity-zh-cn",
+        "license": "MIT",
+        "role": "补充 140 条前端词条"
+      }
+    ]
   }
 }

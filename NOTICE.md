@@ -17,3 +17,4 @@ Antigravity 中文翻译词典与前端/菜单注入引擎基于 [MIMICTE/Antigr
 - 上游 MIT 许可全文保留于 
 esources/antigravity/LICENSE。
 - scripts/install_antigravity_windows.ps1 以纯 PowerShell 复刻 ASAR 解包、幂等注入、进程等待与无损还原流程，零 Python 运行时依赖。
+- 前端全面词典与隔离引擎同时整合了 [ZHUOLIN0928/antigravity-chinese-cdp](https://github.com/ZHUOLIN0928/antigravity-chinese-cdp)（MIT 许可全文保留于 `resources/antigravity/LICENSE-ZHUOLIN`）与 [While-Shark/antigravity-zh-cn](https://github.com/While-Shark/antigravity-zh-cn)（MIT）的词条。
