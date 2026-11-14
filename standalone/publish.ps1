@@ -16,7 +16,7 @@ Copy-Item (Join-Path $root 'resources') -Destination (Join-Path $staging 'resour
 Remove-Item $staging -Recurse -Force
 dotnet publish (Join-Path $PSScriptRoot 'ClaudeZhStandalone.csproj') `
     -c $Configuration -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
     -p:DebugType=None -p:DebugSymbols=false `
     -p:PublishDir="$out\" `
     -p:UseAppHost=true
